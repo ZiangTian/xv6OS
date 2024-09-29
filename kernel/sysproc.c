@@ -73,6 +73,21 @@ sys_sleep(void)
   return 0;
 }
 
+int
+sys_trace(void)
+{
+  // implements the trace syscall by remebering the argument in a new variable in the proc struct
+  int n;
+  // acquire the first argument
+  if(argint(0, &n) < 0)
+    return -1;
+
+  // set the trace mask in the proc struct
+  myproc()->trace_mask = n;
+  return 0;
+  
+}
+
 uint64
 sys_kill(void)
 {
