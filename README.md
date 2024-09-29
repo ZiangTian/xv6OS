@@ -18,3 +18,7 @@ COMMAND_2 [command list 2] line_2
 ...
 COMMAND_2 [command list 2] line_n
 ```
+
+## Test passed
+
+![](https://raw.githubusercontent.com/ZiangTian/img-bed/main/3dfd92d1ec90efda68282d03bd1a1af.png)
