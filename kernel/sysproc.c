@@ -81,6 +81,32 @@ int
 sys_pgaccess(void)
 {
   // lab pgtbl: your code here.
+
+  // get the arguments from the user stack
+  uint64 va;
+  int numPages;
+  uint64 bufferAddr;
+  if (argaddr(0, &va) < 0 || argint(1, &numPages) < 0 || argaddr(2, &bufferAddr) < 0)
+    return -1;
+  
+  // limit the number of pages to 32
+  if (numPages > 32)
+    return -1;
+
+  // allocate a buffer in the kernel space
+  unsigned int *buffer = (unsigned int *)kalloc();
+  if (buffer == 0)
+    return -1;
+  
+  pgaccess(myproc()->pagetable, (char *)va, numPages, buffer);
+
+  // write the buffer to the user space
+  if (copyout(myproc()->pagetable, bufferAddr, (char *)buffer, sizeof(buffer)) < 0)
+  {
+    kfree((char *)buffer);
+    return -1;
+  }
+
   return 0;
 }
 #endif
@@ -107,3 +133,4 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+

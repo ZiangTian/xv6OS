@@ -450,6 +450,7 @@ int copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 // vmprint prints the page table entries in a page table.
 void vmprint_worker(pagetable_t pagetable, int level)
 {
+  printf("page table %p\n", pagetable);
   // there are 2^9 = 512 PTEs in a page table.
   for (int i = 0; i < 512; i++)
   {
@@ -477,4 +478,28 @@ void vmprint_worker(pagetable_t pagetable, int level)
 void vmprint(pagetable_t pagetable)
 {
   vmprint_worker(pagetable, 0);
+}
+
+void pgaccess(pagetable_t pagetable, char* startingVa, int numPages, unsigned int *buffer)
+{
+  // declare output mask
+  unsigned int mask = 0;
+  // iterate through the pages
+  for (int i = 0; i < numPages; i++)
+  {
+    // get the physical address of the page
+    pte_t *pte = walk(pagetable, (uint64)startingVa + i * PGSIZE, 0);
+    if (*pte & PTE_V && *pte & PTE_U && *pte & PTE_A)
+    {
+      // if the page is valid and user accessible and accessed recently, set the bit in the mask
+      mask |= 1 << i;
+
+      // reset the accessed bit
+      *pte &= ~PTE_A;
+    }
+  }
+  // copy the mask to the buffer
+  *buffer = mask;
+
+  return;
 }
