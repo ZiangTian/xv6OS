@@ -15,6 +15,8 @@ extern char etext[];  // kernel.ld sets this to end of kernel code.
 
 extern char trampoline[]; // trampoline.S
 
+extern uint phy_page_refs[];
+
 // Make a direct-map page table for the kernel.
 pagetable_t
 kvmmake(void)
@@ -303,23 +305,54 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
+  // char *mem;
 
-  for(i = 0; i < sz; i += PGSIZE){
-    if((pte = walk(old, i, 0)) == 0)
+  // for(i = 0; i < sz; i += PGSIZE){
+  //   if((pte = walk(old, i, 0)) == 0)
+  //     panic("uvmcopy: pte should exist");
+  //   if((*pte & PTE_V) == 0)
+  //     panic("uvmcopy: page not present");
+  //   pa = PTE2PA(*pte);
+  //   flags = PTE_FLAGS(*pte);
+  //   if((mem = kalloc()) == 0)
+  //     goto err;
+  //   memmove(mem, (char*)pa, PGSIZE);
+  //   if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
+  //     kfree(mem);
+  //     goto err;
+  //   }
+  // }
+  // return 0;
+
+  // map parent's physical pages to child, not copying the data
+  for(i = 0; i < sz; i+= PGSIZE){
+    if((pte = walk(old, i, 0))==0){
       panic("uvmcopy: pte should exist");
-    if((*pte & PTE_V) == 0)
+    }
+
+    if((*pte & PTE_V) == 0){
       panic("uvmcopy: page not present");
-    pa = PTE2PA(*pte);
+    }
+
+    // clear PTE_W in the flags, to make the page read-only
+    if(*pte & PTE_W)
+     *pte &= ~PTE_W;
+
+    // set COW bit
+    *pte |= PTE_COW;
+
+    pa = PTE2PA(*pte); // parent's physical address
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+
+    if(mappages(new, i, PGSIZE, pa, flags) != 0){
       goto err;
     }
+
+    // increment the reference count
+    phy_page_refs[get_phy_page_index((uint64)pa)]++;
+    
   }
+
   return 0;
 
  err:
@@ -350,6 +383,12 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
+
+    // if va0 is a COW page
+    if (check_COW_page(pagetable, va0) != 0) {
+      return -1;
+    }
+
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;
@@ -431,4 +470,54 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+
+// handle a page if it's COW
+int
+check_COW_page(pagetable_t pagetable, uint64 va)
+{
+  uint64 addr = va; // the invalid virtual address that caused the fault
+
+  // check if is COW page fault
+
+  // check if the va is legal
+  addr = PGROUNDDOWN(addr);
+  if(addr >= MAXVA) {
+    printf("va is illegal\n");
+    return -1;
+  }
+  
+  pte_t *pte = walk(pagetable, addr, 0);
+  if (pte == 0) {
+    printf("pte is 0\n");
+    return -1;
+  }
+
+  uint64 pa = PTE2PA(*pte);
+  if(pa == 0) {
+    printf("pa is 0\n");
+    return -1;
+  }    
+
+  uint64 flags = PTE_FLAGS(*pte);
+  
+  if (*pte & PTE_COW) {
+    uint64 new_mem = (uint64)kalloc();
+    if (new_mem == 0) {
+      return -1;
+    }
+    memmove((void *)new_mem, (void *)pa, PGSIZE);
+    uvmunmap(pagetable, addr, 1, 1);
+    
+    // undo the COW flag
+    flags = (flags | PTE_W) & ~PTE_COW;
+
+    if (mappages(pagetable, addr, PGSIZE, new_mem, flags) != 0) {
+      kfree((void *)new_mem);
+      return -1;
+    }
+  }
+
+  return 0;
 }
