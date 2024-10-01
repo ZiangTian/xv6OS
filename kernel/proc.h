@@ -105,4 +105,13 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+
+  unsigned int ticks_passed;   // Number of ticks passed since the process started
+  unsigned int alarm_ticks;    // Number of ticks to wait before sending SIGALRM
+  uint64 alarm_handler;        // Address of the signal handler for SIGALRM
+  // void (*alarm_handler)(void);  // Address of the signal handler for SIGALRM
+
+  struct trapframe *tmp_tf;    // Temporary trapframe for signal handling
+
+  int handling_alarm;          // 1 if the process is handling an alarm, 0 otherwise
 };

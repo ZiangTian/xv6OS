@@ -98,3 +98,41 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64
+sys_sigreturn(void)
+{
+  // copy back the trapframe
+  struct proc *p = myproc();
+
+  memmove(p->trapframe, p->tmp_tf, sizeof(struct trapframe));
+  kfree((void *)p->tmp_tf);
+
+  p->handling_alarm = 0;
+  
+  // memmove(p->trapframe, &(p->tmp_tf), sizeof(struct trapframe));
+  
+  p->ticks_passed = 0;
+
+  return 0;
+}
+
+uint64
+sys_sigalarm(void)
+{
+  // read ticks and handler from user space
+  int ticks;
+  uint64 handler;
+
+  if(argint(0, &ticks) < 0 || argaddr(1, &handler) < 0)
+    return -1;
+
+  // set alarm
+
+  myproc()->alarm_ticks = ticks;
+  // myproc()->alarm_handler = (void *)handler;
+  myproc()->alarm_handler = handler;
+
+  return 0;
+
+}
