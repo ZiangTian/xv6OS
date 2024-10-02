@@ -26,3 +26,7 @@ Both `struct context` and `struct trapframe` are defined in `kernel/proc.h` and 
 - Trapframes are used when an interrupt/exception/system call comes in. A trapframe should capture the state of the CPU at the moment of the trap, so that the kernel can handle the trap event and resume the interrupted event later correctly. Therefore, a trapframe includes **all** the CPU registers (incl. `pc`, `sp`...).
 
 > Why do syscalls use trapframes rather than context switches? Syscalls involve a transition from user mode to kernel mode. Theoretically, it might not be necessary to save *all* the CPU registers. It's more of a safe move to do so.
+
+## Test Passed
+
+![](https://raw.githubusercontent.com/ZiangTian/img-bed/main/20241002153401.png)
