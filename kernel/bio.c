@@ -23,15 +23,25 @@
 #include "fs.h"
 #include "buf.h"
 
+#define BCACHE_NBUCKET 13 
+
 struct {
   struct spinlock lock;
-  struct buf buf[NBUF];
+  struct buf buf[NBUF]; // each element represents a buffer that can store a block of data
 
   // Linked list of all buffers, through prev/next.
   // Sorted by how recently the buffer was used.
   // head.next is most recent, head.prev is least.
   struct buf head;
-} bcache;
+
+  // bucketed cache of free buffers
+  struct buf buf_buckets[BCACHE_NBUCKET];
+  struct spinlock bucket_locks[BCACHE_NBUCKET];
+} bcache;  // allow synchronized access to the buffer cache
+
+uint hash(uint dev, uint blockno) {
+  return (dev ^ blockno) % BCACHE_NBUCKET;
+}
 
 void
 binit(void)
@@ -60,17 +70,25 @@ bget(uint dev, uint blockno)
 {
   struct buf *b;
 
-  acquire(&bcache.lock);
+  // compute which bucket the block belongs to
+  uint bucket = hash(dev, blockno);
+
+  // acquire the lock for the bucket
+  acquire(&bcache.bucket_locks[bucket]);
 
   // Is the block already cached?
-  for(b = bcache.head.next; b != &bcache.head; b = b->next){
+  for(b = bcache.buf_buckets[bucket].next; b; b = b->next){  // till the end of the list
     if(b->dev == dev && b->blockno == blockno){
       b->refcnt++;
-      release(&bcache.lock);
-      acquiresleep(&b->lock);
+      release(&bcache.bucket_locks[bucket]);
+      acquiresleep(&b->lock); // ensure exclusive access to the buffer
       return b;
     }
   }
+
+  release(&bcache.bucket_locks[bucket]);  // avoid deadlock
+
+  acquire(&bcache.lock);
 
   // Not cached.
   // Recycle the least recently used (LRU) unused buffer.
@@ -81,7 +99,7 @@ bget(uint dev, uint blockno)
       b->valid = 0;
       b->refcnt = 1;
       release(&bcache.lock);
-      acquiresleep(&b->lock);
+      acquiresleep(&b->lock); // ensure exclusive access to the buffer
       return b;
     }
   }
