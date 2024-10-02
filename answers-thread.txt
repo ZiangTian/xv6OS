@@ -1,0 +1,1 @@
+Threads A and B put an entry into the map almost simultaneously. If their keys map to the same bucket, and arrive at `insert()` at the same time, the first one to insert might just get interrupted and the latter one's insertion completely replaces the first one, causing the data to be lost. 
