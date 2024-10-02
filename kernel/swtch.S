@@ -1,6 +1,7 @@
 # Context switch
 #
 #   void swtch(struct context *old, struct context *new);
+#   a0 holds the address for the old context, a1 holds the address for the new context.
 # 
 # Save current registers in old. Load from new.	
 
