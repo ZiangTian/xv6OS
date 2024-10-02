@@ -122,6 +122,9 @@ kalloc(void)
     release(&kmemcpu[cpu].kmem_lock);
   } else{
     release(&kmemcpu[cpu].kmem_lock);
+    // we release the lock here because we allocate from other CPUs anyway.
+    // directly assign r so we don't need to acquire the lock again
+
     // current CPU has an empty freelist, try to steal from another CPU
     for(int i = 0; i < NCPU; i++){
       if(i == cpu) continue;
