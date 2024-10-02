@@ -12,11 +12,12 @@ struct entry {
   int key;
   int value;
   struct entry *next;
+  pthread_mutex_t lock;
 };
 struct entry *table[NBUCKET];
 int keys[NKEYS];
+pthread_mutex_t bucket_locks[NBUCKET];
 int nthread = 1;
-
 
 double
 now()
@@ -39,7 +40,9 @@ insert(int key, int value, struct entry **p, struct entry *n)
 static 
 void put(int key, int value)
 {
-  int i = key % NBUCKET;
+  int i = key % NBUCKET;  // the keys are divided into NBUCKET buckets
+
+  pthread_mutex_lock(&bucket_locks[i]);
 
   // is the key already present?
   struct entry *e = 0;
@@ -48,12 +51,13 @@ void put(int key, int value)
       break;
   }
   if(e){
-    // update the existing key.
     e->value = value;
   } else {
     // the new is new.
     insert(key, value, &table[i], table[i]);
   }
+
+  pthread_mutex_unlock(&bucket_locks[i]);
 
 }
 
@@ -62,11 +66,14 @@ get(int key)
 {
   int i = key % NBUCKET;
 
+  pthread_mutex_lock(&bucket_locks[i]);
 
   struct entry *e = 0;
   for (e = table[i]; e != 0; e = e->next) {
     if (e->key == key) break;
   }
+
+  pthread_mutex_unlock(&bucket_locks[i]);
 
   return e;
 }
@@ -105,7 +112,6 @@ main(int argc, char *argv[])
   void *value;
   double t1, t0;
 
-
   if (argc < 2) {
     fprintf(stderr, "Usage: %s nthreads\n", argv[0]);
     exit(-1);
@@ -116,6 +122,11 @@ main(int argc, char *argv[])
   assert(NKEYS % nthread == 0);
   for (int i = 0; i < NKEYS; i++) {
     keys[i] = random();
+  }
+
+  // init the bucket locks
+  for (int i = 0; i < NBUCKET; i++) {
+    pthread_mutex_init(&bucket_locks[i], NULL);
   }
 
   //
