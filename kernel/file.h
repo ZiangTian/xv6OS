@@ -16,9 +16,9 @@ struct file {
   short major;       // FD_DEVICE
 };
 
-#define major(dev)  ((dev) >> 16 & 0xFFFF)
-#define minor(dev)  ((dev) & 0xFFFF)
-#define	mkdev(m,n)  ((uint)((m)<<16| (n)))
+#define major(dev)  ((dev) >> 16 & 0xFFFF) // usually the type of device
+#define minor(dev)  ((dev) & 0xFFFF) // device-specific identifier
+#define	mkdev(m,n)  ((uint)((m)<<16| (n))) // create a device identifier
 
 // in-memory copy of an inode
 struct inode {
