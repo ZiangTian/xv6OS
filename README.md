@@ -4,7 +4,9 @@
 
 ## Locking scheme used here
 
-For a bcache divided into `N` buckets, it is not sufficient to assign a bucket lock to each group. When one group runs out of LRU block, it needs to steal from other groups. Here I adopted a scheme where the group releases its own bucket first, acquires a global lock `steallock`, and then tries to steal the lock of other groups while hold that global `steallock`.   
+For a bcache divided into `N` buckets, it is not sufficient to assign a bucket lock to each group. When one group runs out of LRU block, it needs to steal from other groups. Here I adopted a scheme where the group releases its own bucket lock (group lock) first (so that it holds no lock and other groups can steal its lock), acquires a global lock `steallock`, and then tries to steal the lock of other groups while holding that global `steallock`. This narrows the global critical section to only the stealing phase (which may rarely even happens under an effective hash scheme).
+
+> copilot is messy af. i trusted its generation of the hash function and that turns out to be my downfall. spent 3 hours on it.
 
 
 ## Test passed
