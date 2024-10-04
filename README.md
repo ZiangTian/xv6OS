@@ -1,0 +1,10 @@
+# Notes
+
+> I have finished this lab in October, 2023 but I did not keep a copy of the code on github. Therefore this is a revisit and all the code is hosted and showcased in this repo.
+
+[Reference](https://blog.csdn.net/rocketeerLi/article/details/122531232)
+
+## Tests passed
+
+![](https://raw.githubusercontent.com/ZiangTian/img-bed/main/20241004200820.png)
+
