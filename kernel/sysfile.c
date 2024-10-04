@@ -104,17 +104,132 @@ sys_close(void)
   return 0;
 }
 
+// uint64
+// sys_mmap(void)
+// {
+//   // get the 6 arguments
+//   uint64 addr;
+//   uint64 length;
+//   int prot;
+//   int flags;
+//   int fd;
+//   int offset;
+//   struct file *f;
+
+//   //void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset);
+
+//   // check if the arguments are valid
+//   if(argaddr(0, &addr) < 0 || argaddr(1, &length) < 0 || argint(2, &prot) < 0 || argint(3, &flags) < 0 || argfd(4, &fd, &f) || argint(5, &offset) < 0)
+//     return -1;
+  
+//   struct proc *p = myproc();
+
+//   // check if the file is valid
+//   if(fd < 0 || fd >= NOFILE || (f = p->ofile[fd]) == 0)
+//     return -1;
+  
+//   if (addr || offset)
+//     return -1;
+  
+//   if (!f->writable && (prot & PROT_WRITE) && (flags && MAP_SHARED) )
+//     return -1;
+
+//   length = PGROUNDUP(length); 
+
+//   if(p->sz > MAXVA - length)
+//     return -1;
+
+//   // try to find a free space in the memory to map the file to. 
+//   // find an unused region in the process's address space in which to map the file
+//   for (int i = 0; i < VMASIZE; i++) {
+//     if (p->vmas[i].occupied == 0) {
+//       // found a free space
+//       p->vmas[i].occupied = 1;
+//       p->vmas[i].start_addr = p->sz; // start right after the last vma
+//       p->vmas[i].len = length;
+//       p->vmas[i].prot = prot;
+//       p->vmas[i].flags = flags;
+//       p->vmas[i].offset = offset;
+//       p->vmas[i].file = f;
+//       filedup(f);
+//       p->sz += length;
+//       return p->vmas[i].start_addr;
+//     }
+//   }
+//   return -1;
+// }
+
 uint64
 sys_mmap(void)
 {
-  return 0;
+  uint64 addr;
+  int length, prot, flags, fd, offset;
+  struct file *file;
+  struct proc *p = myproc();
+  if(argaddr(0, &addr) || argint(1, &length) || argint(2, &prot) ||
+    argint(3, &flags) || argfd(4, &fd, &file) || argint(5, &offset)) {
+    return -1;
+  }
+  if(!file->writable && (prot & PROT_WRITE) && flags == MAP_SHARED)
+    return -1;
+  length = PGROUNDUP(length);
+  if(p->sz > MAXVA - length)
+    return -1;
+  for(int i = 0; i < VMASIZE; i++) {
+    //printf("mmap: %d, addr: %d, used: %d\n", i, p->vmas[i].addr, p->vmas[i].occupied);
+    if(p->vmas[i].occupied == 0) {
+      //printf("mmap: %d, addr: %d\n", i, p->sz);
+      p->vmas[i].occupied = 1;
+      p->vmas[i].start_addr = p->sz;
+      p->vmas[i].len = length;
+      p->vmas[i].prot = prot;
+      p->vmas[i].flags = flags;
+      p->vmas[i].file = file;
+      p->vmas[i].offset = offset;
+      filedup(file);
+	  //printf("p->sz: %d\t", p->sz);
+      p->sz += length;
+      //printf("p->sz: %d\n", p->sz);
+      return p->vmas[i].start_addr;
+    }
+  }
+  return -1;
 }
 
+
+// remove mmap mappings in the indicated address range
 uint64
 sys_munmap(void)
 {
+  uint64 addr;
+  int length;
+  struct proc *p = myproc();
+  struct vma *vma = 0;
+  if(argaddr(0, &addr) || argint(1, &length))
+    return -1;
+  addr = PGROUNDDOWN(addr);
+  length = PGROUNDUP(length);
+  for(int i = 0; i < VMASIZE; i++) {
+    if (addr >= p->vmas[i].start_addr || addr < p->vmas[i].start_addr + p->vmas[i].len) {
+      vma = &p->vmas[i];
+      break;
+    }
+  }
+  if(vma == 0) return 0;
+  if(vma->start_addr == addr) { // unmap the whole vma
+    vma->start_addr += length;
+    vma->len -= length;
+    if(vma->flags & MAP_SHARED)
+      filewrite(vma->file, addr, length);
+    uvmunmap(p->pagetable, addr, length/PGSIZE, 1);
+    if(vma->len == 0) {
+      fileclose(vma->file);
+      vma->occupied = 0;
+    }
+  }
   return 0;
 }
+
 
 uint64
 sys_fstat(void)
