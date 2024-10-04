@@ -9,7 +9,11 @@
 #include "net.h"
 
 #define TX_RING_SIZE 16
-static struct tx_desc tx_ring[TX_RING_SIZE] __attribute__((aligned(16)));
+// tx_ring is an array of 16 tx_desc structs that holds the transmit descriptors.
+// a transmit descriptor describes a packet that the e1000 should send, like its length and location in memory.
+static struct tx_desc tx_ring[TX_RING_SIZE] __attribute__((aligned(16))); 
+
+// tx_mbufs is an array of 16 mbuf pointers that holds the mbufs that are being transmitted.
 static struct mbuf *tx_mbufs[TX_RING_SIZE];
 
 #define RX_RING_SIZE 16
@@ -17,7 +21,7 @@ static struct rx_desc rx_ring[RX_RING_SIZE] __attribute__((aligned(16)));
 static struct mbuf *rx_mbufs[RX_RING_SIZE];
 
 // remember where the e1000's registers live.
-static volatile uint32 *regs;
+static volatile uint32 *regs; // regs is a pointer to the e1000's registers.
 
 struct spinlock e1000_lock;
 
@@ -42,15 +46,17 @@ e1000_init(uint32 *xregs)
   // [E1000 14.5] Transmit initialization
   memset(tx_ring, 0, sizeof(tx_ring));
   for (i = 0; i < TX_RING_SIZE; i++) {
-    tx_ring[i].status = E1000_TXD_STAT_DD;
-    tx_mbufs[i] = 0;
+    tx_ring[i].status = E1000_TXD_STAT_DD; //set the status to DD (Descriptor Done) to indicate that the descriptor is free.
+    tx_mbufs[i] = 0; // no mbufs are being transmitted yet.
   }
-  regs[E1000_TDBAL] = (uint64) tx_ring;
-  if(sizeof(tx_ring) % 128 != 0)
+  regs[E1000_TDBAL] = (uint64) tx_ring; // TDBAL is the base address of the transmit descriptor ring.
+  if(sizeof(tx_ring) % 128 != 0) 
     panic("e1000");
-  regs[E1000_TDLEN] = sizeof(tx_ring);
-  regs[E1000_TDH] = regs[E1000_TDT] = 0;
-  
+  regs[E1000_TDLEN] = sizeof(tx_ring); // TDLEN is the length of the transmit descriptor ring.
+  regs[E1000_TDH] = regs[E1000_TDT] = 0; // TDH is the transmit descriptor head index, and TDT is the transmit descriptor tail index.
+  // TDT points to the next available descriptor in the ring for transmission.
+  // TDH points to the currently processing descriptor in the ring, or has just been processed.
+
   // [E1000 14.4] Receive initialization
   memset(rx_ring, 0, sizeof(rx_ring));
   for (i = 0; i < RX_RING_SIZE; i++) {
@@ -102,9 +108,37 @@ e1000_transmit(struct mbuf *m)
   // the TX descriptor ring so that the e1000 sends it. Stash
   // a pointer so that it can be freed after sending.
   //
-  
+
+  acquire(&e1000_lock); // guarantee exclusive access to the e1000
+
+  // find a free descriptor
+  uint i = regs[E1000_TDT];
+  i = i % TX_RING_SIZE;
+  if (!(tx_ring[i].status & E1000_TXD_STAT_DD)) {
+    // no free descriptors if status is not done
+    release(&e1000_lock);
+    return -1;
+  }
+
+  if(tx_mbufs[i] != 0){
+    // free
+    mbuffree(tx_mbufs[i]);
+  }
+
+  // copy the packet into the buffer
+  tx_mbufs[i] = m;
+  // initialize the descriptor
+  tx_ring[i].addr = (uint64) m->head;
+  tx_ring[i].length = m->len;
+  tx_ring[i].status &= ~E1000_TXD_STAT_DD; // clear the done bit
+  tx_ring[i].cmd = E1000_TXD_CMD_RS | E1000_TXD_CMD_EOP; // RS (report status) and EOP (end of packet)
+
+  // advance the tail
+  regs[E1000_TDT] = (i + 1) % TX_RING_SIZE;
+  release(&e1000_lock);  
   return 0;
 }
+
 
 static void
 e1000_recv(void)
@@ -115,6 +149,44 @@ e1000_recv(void)
   // Check for packets that have arrived from the e1000
   // Create and deliver an mbuf for each packet (using net_rx()).
   //
+
+  // acquire(&e1000_lock); // guarantee exclusive access to the e1000
+
+  // find the next packet
+  uint i = regs[E1000_RDT]; // i is the one being processed or has just been processed
+  i = (i+1) % RX_RING_SIZE;  // should be the next one
+
+  // use a while loop to handle when total number exceeds ring size.
+  // while there is a packet to process
+  while (rx_ring[i].status & E1000_RXD_STAT_DD) {
+    // update len
+    rx_mbufs[i]->len = rx_ring[i].length;
+    net_rx(rx_mbufs[i]);
+
+    // allocate a new mbuf to replace the one we just delivered
+    rx_mbufs[i] = mbufalloc(0);
+    if (!rx_mbufs[i])
+      panic("e1000");
+    // clear the descriptor status
+    rx_ring[i].status = 0;
+    // set the new address
+    rx_ring[i].addr = (uint64) rx_mbufs[i]->head;
+
+    // update the registers
+    regs[E1000_RDT] = i;
+
+    // move to the next packet
+    i = (i+1) % RX_RING_SIZE;
+  }
+
+  // revert i by 1 to point to the last processed packet
+  i = (i-1) % RX_RING_SIZE;
+  // update the tail
+  regs[E1000_RDT] = i;
+
+  // release(&e1000_lock);
+
+  return;
 }
 
 void
