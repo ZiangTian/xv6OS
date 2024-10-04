@@ -54,7 +54,7 @@ e1000_init(uint32 *xregs)
     panic("e1000");
   regs[E1000_TDLEN] = sizeof(tx_ring); // TDLEN is the length of the transmit descriptor ring.
   regs[E1000_TDH] = regs[E1000_TDT] = 0; // TDH is the transmit descriptor head index, and TDT is the transmit descriptor tail index.
-  // TDT points to the next available descriptor in the ring for transmission.
+  // TDT points to the next available descriptor in the ring.
   // TDH points to the currently processing descriptor in the ring, or has just been processed.
 
   // [E1000 14.4] Receive initialization
